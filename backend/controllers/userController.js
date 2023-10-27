@@ -1,8 +1,22 @@
 const asyncHandler = require("express-async-handler");
 const User = require("../models/userModel");
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
+// const jwt = require("jsonwebtoken");
 const generateToken = require("../config/generateToken");
+
+const allUser = asyncHandler(async (req, res) => {
+  const keyword = req.query.search
+    ? {
+        $or: [
+          { name: { $regex: req.query.search, $options: "i" } },
+          { email: { $regex: req.query.search, $options: "i" } }
+        ]
+      }
+    : {};
+
+  const users = await User.find(keyword).find({ _id: { $ne: req.user._id } });
+  res.send(users);
+});
 
 const registerUser = asyncHandler(async (req, res) => {
   const { name, email, password, pic } = req.body;
@@ -16,8 +30,8 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new Error("User Already Exists");
   }
 
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(password, salt);
+  // const salt = await bcrypt.genSalt(10);
+  // const hashedPassword = await bcrypt.hash(password, salt);
 
   // const token = jwt.sign({ id }, process.env.JWT_SECRET, {
   //   expiresIn: "30d"
@@ -25,7 +39,7 @@ const registerUser = asyncHandler(async (req, res) => {
   const user = await User.create({
     name,
     email,
-    password: hashedPassword,
+    password,
     pic
   });
 
@@ -33,8 +47,8 @@ const registerUser = asyncHandler(async (req, res) => {
     res.status(201).json({
       _id: user._id,
       name: user.name,
-      email: user.email,
       isAdmin: user.isAdmin,
+      email: user.email,
       pic: user.pic,
       token: generateToken(user._id)
     });
@@ -52,44 +66,43 @@ const authUser = asyncHandler(async (req, res) => {
   }
 
   const user = await User.findOne({ email });
-  if (!user) {
+  if (user && (await user.matchPassword(password))) {
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      isAdmin: user.isAdmin,
+      pic: user.pic,
+      token: generateToken(user._id)
+    });
+  } else {
     res.status(401);
-    throw new Error("Invalid email or password");
+    throw new Error("Invalid Email or Password");
   }
+  // if (!user) {
+  //   res.status(401);
+  //   throw new Error("Invalid email or password");
+  // }
 
-  const validPassword = await bcrypt.compare(password, user.password);
-  if (!validPassword) {
-    return res.send({ error: "Password is Incorrect" });
-  }
+  // const validPassword = await bcrypt.compare(password, user.password);
+  // if (!validPassword) {
+  //   return res.send({ error: "Password is Incorrect" });
+  // }
 
   // const token = jwt.sign(
   //   { exp: Math.floor(Date.now() / 1000), _id: user._id, name: user.name },
   //   process.env.JWT_SECRET
   // );
 
-  res.status(200).send({
-    success: `Login Successfully.User ID is ${user._id}`,
-    token: generateToken(user._id),
-    tokenInfo: {
-      httpOnly: false,
-      secure: true,
-      sameSite: "strict"
-    }
-  });
-});
-
-const allUser = asyncHandler(async (req, res) => {
-  const keyword = req.query.search
-    ? {
-        $or: [
-          { name: { $regex: req.query.search, $options: "i" } },
-          { email: { $regex: req.query.search, $options: "i" } }
-        ]
-      }
-    : {};
-
-  const users = await User.find(keyword).find({ _id: { $ne: req.user._id } });
-  res.send(users);
+  // res.status(200).send({
+  //   success: `Login Successfully.User ID is ${user._id}`,
+  //   token: generateToken(user._id),
+  //   tokenInfo: {
+  //     httpOnly: false,
+  //     secure: true,
+  //     sameSite: "strict"
+  //   }
+  // });
 });
 
 module.exports = { registerUser, authUser, allUser };
